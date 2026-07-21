@@ -1,41 +1,60 @@
 """
 auth.py
-Módulo de autenticación: soporta login personalizado y Microsoft Entra ID (OAuth2).
+Módulo de autenticación: soporta login personalizado (bcrypt) y Microsoft Entra ID (OAuth2).
 """
 
 import streamlit as st
 import jwt
-import requests
 from streamlit_oauth import OAuth2Component
+
+from database import (
+    get_user,
+    create_user,
+    migrate_secrets_users,
+    log_event,
+    verify_password,
+)
 from permissions import get_user_role
 
 
 def _init_session(user_email: str, user_name: str, source: str):
-    st.session_state["user"] = user_email.lower()
-    st.session_state["name"] = user_name
+    user_email = user_email.lower()
+    migrate_secrets_users(st.secrets.get("users", {}))
+
+    user = get_user(user_email)
+    if not user:
+        role = get_user_role(user_email) or "reader"
+        create_user(user_email, "entra-id-no-local", role, name=user_name)
+        user = get_user(user_email)
+
+    st.session_state["user"] = user_email
+    st.session_state["name"] = user.get("name", user_name)
+    st.session_state["role"] = user.get("role", "reader")
     st.session_state["source"] = source
-    st.session_state["role"] = get_user_role(user_email)
+    log_event(user_email, "login", f"source={source}")
     st.rerun()
 
 
 def login_custom():
-    """Login con credenciales locales definidas en secrets.toml bajo [users]."""
+    """Login con credenciales locales usando hashes bcrypt en users.json."""
     st.subheader("Login personalizado")
     email = st.text_input("Correo corporativo", key="custom_email")
     password = st.text_input("Contraseña", type="password", key="custom_password")
 
     if st.button("Iniciar sesión", key="custom_login"):
-        user_entry = st.secrets.get("users", {}).get(email.lower(), "")
-        if not user_entry:
+        migrate_secrets_users(st.secrets.get("users", {}))
+        user = get_user(email.lower())
+        if not user:
             st.error("Usuario no encontrado.")
+            log_event(email.lower(), "login_failed", "user_not_found")
             return
 
-        parts = str(user_entry).split(",")
-        stored_password = parts[0].strip()
-        if password == stored_password:
-            _init_session(email, email, "custom")
-        else:
+        if not verify_password(password, user.get("password_hash", "")):
             st.error("Contraseña incorrecta.")
+            log_event(email.lower(), "login_failed", "bad_password")
+            return
+
+        _init_session(email, user.get("name", email), "custom")
 
 
 def login_entra_id():
@@ -70,7 +89,6 @@ def login_entra_id():
     )
 
     if result:
-        # El token JWT de Microsoft puede venir como id_token o access_token
         token = result.get("id_token") or result.get("access_token", "")
         if token:
             try:
@@ -89,6 +107,9 @@ def login_entra_id():
 
 def logout():
     """Cierra la sesión del usuario."""
+    email = st.session_state.get("user", "")
+    if email:
+        log_event(email, "logout", "")
     for key in ["user", "name", "source", "role"]:
         if key in st.session_state:
             del st.session_state[key]
