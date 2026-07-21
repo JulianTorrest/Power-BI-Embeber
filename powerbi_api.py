@@ -25,7 +25,7 @@ def get_powerbi_access_token(tenant_id: str, client_id: str, client_secret: str)
     return r.json()["access_token"]
 
 
-def get_embed_details(workspace_id: str, report_id: str, tenant_id: str, client_id: str, client_secret: str):
+def generate_embed_url(workspace_id: str, report_id: str, tenant_id: str, client_id: str, client_secret: str):
     """
     Retorna embedUrl y embedToken para un reporte vía REST API.
     """
