@@ -39,10 +39,12 @@ Aplicación **Streamlit** desplegable en **Streamlit Cloud** que permite embeber
 ```
 .
 ├── .streamlit/
-│   └── secrets.toml       # Variables sensibles: Entra ID, usuarios, tableros
+│   └── secrets.toml       # Variables sensibles: Entra ID, Power BI, usuarios, tableros
 ├── app.py                 # Aplicación principal de Streamlit
-├── auth.py                # Lógica de autenticación
-├── permissions.py         # Lógica de permisos y mapeo
+├── auth.py                # Autenticación (bcrypt + Entra ID)
+├── permissions.py         # Permisos y roles jerárquicos
+├── database.py            # Persistencia JSON local
+├── powerbi_api.py         # Esqueleto Power BI REST API + Embed Token
 ├── requirements.txt       # Dependencias
 └── README.md              # Este archivo
 ```
@@ -75,6 +77,24 @@ Coloca la URL que tengas en `secrets.toml` bajo `tableros.url` y la app la usar�
 3. En **Settings → Secrets**, copia el contenido de `.streamlit/secrets.toml`.
 4. Despliega.
 
+## Funcionalidades avanzadas
+
+- **Hashing de contraseñas**: el login personalizado usa `bcrypt` y almacena hashes en `data/users.json`.
+- **Roles jerárquicos**: `admin` > `editor` > `reader`; controles de permisos granulares.
+- **Audit log**: registra logins, logouts y vistas de tableros en `data/audit_log.json`.
+- **Favoritos e historial**: cada usuario puede marcar favoritos y ver sus últimos tableros consultados.
+- **Buscador**: filtra tableros por nombre o categoría.
+- **Gestión de perfil**: edición de nombre, tema e idioma.
+- **Anuncios in-app**: administradores pueden publicar mensajes visibles por rol.
+- **Power BI REST API + Embed Token**: esqueleto para generar tokens de embebido seguros desde la API de Power BI.
+- **Asistente virtual con LLM**: chat integrado con OpenAI en la pestaña de información del proyecto.
+- **Métricas y analytics**: panel de administración con vistas por tablero y auditoría.
+- **Exportación**: placeholder para exportar reportes (requiere capacidad Premium).
+
+## Persistencia de datos
+
+`database.py` usa archivos JSON en la carpeta `data/`. En Streamlit Cloud el filesystem es efímero: los datos se mantienen durante la ejecución pero pueden perderse entre reinicios. Para producción con datos persistentes, migra `database.py` a Supabase, PostgreSQL, S3 u otra base de datos.
+
 ## Ejecución local
 
 ```bash
@@ -85,5 +105,5 @@ streamlit run app.py
 ## Notas de seguridad
 
 - No subas `.streamlit/secrets.toml` a repositorios públicos.
-- El login personalizado del ejemplo usa passwords en texto plano solo para demostración. En producción usa hashing (por ejemplo, `bcrypt`) o preferiblemente Entra ID.
+- El login personalizado ahora migra automáticamente las contraseñas de `secrets.toml` a hashes `bcrypt` en `data/users.json`. No subas ese archivo ni el `secrets.toml` a repositorios públicos.
 - El decode del JWT en `auth.py` no verifica firma por simplicidad en Streamlit Cloud. En producción valida la firma usando las llaves públicas de Microsoft.
